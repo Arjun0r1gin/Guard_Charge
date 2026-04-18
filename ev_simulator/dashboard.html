@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GuardCharge — Live Dashboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #060809; --panel: #0d1117; --border: #21262d;
+      --green: #3fff8f; --yellow: #ffe066; --orange: #ffaa44;
+      --red: #ff5566; --blue: #79c0ff; --purple: #d2a8ff;
+      --dim: #586069; --text: #e6edf3;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px 14px 48px; }
+
+    header { width: 100%; max-width: 960px; display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+    .logo { font-family: 'Orbitron', sans-serif; font-size: 17px; color: var(--green); letter-spacing: 2px; }
+    .logo span { color: var(--dim); font-size: 11px; display: block; font-family: 'Share Tech Mono', monospace; }
+    .status-pill { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--dim); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); transition: background .3s; }
+    .dot.live { background: var(--green); box-shadow: 0 0 7px var(--green); animation: pulse 1.8s infinite; }
+    .dot.dead { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Layout */
+    .main-row { width: 100%; max-width: 960px; display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
+
+    /* Terminal */
+    .terminal-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+    .terminal-title { display: flex; align-items: center; gap: 7px; padding: 9px 14px; background: #0a0d12; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--dim); }
+    .win-btn { width: 10px; height: 10px; border-radius: 50%; }
+    .win-btn.r { background: #ff5f57; } .win-btn.y { background: #febc2e; } .win-btn.g { background: #28c840; }
+    #terminal { padding: 14px 16px; min-height: 500px; max-height: 580px; overflow-y: auto; line-height: 1.75; flex: 1; }
+    #terminal::-webkit-scrollbar { width: 5px; }
+    #terminal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .line { white-space: pre-wrap; word-break: break-all; }
+
+    /* Colours */
+    .c-green { color: var(--green); } .c-yellow { color: var(--yellow); }
+    .c-orange { color: var(--orange); } .c-red { color: var(--red); }
+    .c-blue { color: var(--blue); } .c-purple { color: var(--purple); }
+    .c-dim { color: var(--dim); } .c-text { color: var(--text); }
+
+    /* Cursor */
+    .cursor { display: inline-block; width: 7px; height: 13px; background: var(--green); vertical-align: middle; margin-left: 1px; animation: blink .75s step-end infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Right panel */
+    .right-panel { display: flex; flex-direction: column; gap: 12px; }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; text-align: center; }
+    .stat-card .val { font-family: 'Orbitron', sans-serif; font-size: 20px; line-height: 1; }
+    .stat-card .lbl { font-size: 9px; color: var(--dim); margin-top: 3px; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* Trust gauge */
+    .gauge-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .gauge-card .gc-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+    #gauge-svg circle.track { stroke: #1c2128; }
+    #gauge-svg circle.fill { transition: stroke-dashoffset .8s cubic-bezier(.4,0,.2,1), stroke .4s; stroke-linecap: round; }
+    #gauge-score { font-family: 'Orbitron', sans-serif; font-size: 26px; fill: var(--green); transition: fill .4s; }
+    #gauge-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; fill: var(--dim); }
+
+    /* Explanation panel */
+    .explain-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; flex: 1; display: none; }
+    .explain-card.show { display: block; }
+    .explain-card .ec-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .explain-bullet { display: flex; gap: 8px; margin-bottom: 8px; line-height: 1.5; font-size: 12px; }
+    .bullet-dot { flex-shrink: 0; margin-top: 2px; }
+    .explain-badge { font-family: 'Orbitron', sans-serif; font-size: 8px; padding: 1px 6px; border-radius: 3px; background: #1c2128; color: var(--dim); }
+
+    /* Result chip row */
+    .result-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: none; }
+    .result-card.show { display: block; }
+    .rc-signal { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 1px; margin-bottom: 8px; }
+    .rc-chips { display: flex; flex-direction: column; gap: 5px; }
+    .rc-chip { font-size: 11px; color: var(--dim); }
+    .rc-chip span { float: right; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">GUARDCHARGE <span>EV Security Simulator — Live</span></div>
+  <div class="status-pill"><div class="dot" id="dot"></div><span id="conn-label">Connecting…</span></div>
+</header>
+
+<div class="main-row">
+  <!-- Terminal -->
+  <div class="terminal-wrap">
+    <div class="terminal-title">
+      <div class="win-btn r"></div><div class="win-btn y"></div><div class="win-btn g"></div>
+      <span style="margin-left:8px;">guardcharge — ev_simulator.py</span>
+    </div>
+    <div id="terminal"><span class="cursor" id="cursor"></span></div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="val c-text" id="s-ins">0</div><div class="lbl">Insertions</div></div>
+      <div class="stat-card"><div class="val c-green" id="s-safe">0</div><div class="lbl">Verified</div></div>
+      <div class="stat-card"><div class="val c-yellow" id="s-sus">0</div><div class="lbl">Suspicious</div></div>
+      <div class="stat-card"><div class="val c-red" id="s-rogue">0</div><div class="lbl">Blocked</div></div>
+    </div>
+
+    <!-- Trust gauge -->
+    <div class="gauge-card">
+      <div class="gc-title">Trust Score</div>
+      <svg id="gauge-svg" width="150" height="150" viewBox="0 0 150 150">
+        <circle class="track" cx="75" cy="75" r="58" fill="none" stroke-width="12"/>
+        <circle class="fill" id="gauge-fill" cx="75" cy="75" r="58" fill="none" stroke="#3fff8f" stroke-width="12"
+          stroke-dasharray="364.4" stroke-dashoffset="364.4" transform="rotate(-90 75 75)"/>
+        <text id="gauge-score" x="75" y="70" text-anchor="middle" dominant-baseline="middle" font-size="28">—</text>
+        <text id="gauge-label" x="75" y="98" text-anchor="middle" font-size="10">TRUST SCORE</text>
+      </svg>
+    </div>
+
+    <!-- Result card -->
+    <div class="result-card" id="result-card">
+      <div class="rc-signal" id="rc-signal"></div>
+      <div class="rc-chips" id="rc-chips"></div>
+    </div>
+
+    <!-- Explanation -->
+    <div class="explain-card" id="explain-card">
+      <div class="ec-title">Detection Breakdown</div>
+      <div id="explain-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SSE_URL    = "http://localhost:8000/stream/events";
+  const CHAR_DELAY = 4;   // ms per char
+  const LINE_GAP   = 8;   // ms between lines
+
+  const term   = document.getElementById("terminal");
+  const cursor = document.getElementById("cursor");
+  const dot    = document.getElementById("dot");
+  const connLbl= document.getElementById("conn-label");
+
+  let lineQueue = [], typing = false;
+  let stats = { ins:0, safe:0, sus:0, rogue:0 };
+
+  // ── Colour classifier ──────────────────────────────
+  function classify(t) {
+    const s = t.trim();
+    if (/^={3,}/.test(s))                          return "c-dim";
+    if (/\[USB\]/.test(s))                          return "c-purple";
+    if (/\[STEP\s[1-6]\]/.test(s))                  return "c-blue";
+    if (/\[CERT\]/.test(s) && /MISMATCH/.test(s))   return "c-red";
+    if (/\[CERT\]/.test(s))                          return "c-green";
+    if (/\[WARN\]/.test(s))                          return "c-yellow";
+    if (/\[MEASURE\]/.test(s))                       return "c-blue";
+    if (/\[BASELINE\]/.test(s))                      return "c-purple";
+    if (/⚠/.test(s))                                 return "c-orange";
+    if (/GREEN.*AUTHORIZED/.test(s))                 return "c-green";
+    if (/YELLOW.*WARNING/.test(s))                   return "c-yellow";
+    if (/ORANGE.*BLOCKED/.test(s))                   return "c-orange";
+    if (/RED.*HARD BLOCK/.test(s))                   return "c-red";
+    if (/Trust Score/.test(s))                       return "c-green";
+    if (/Hard Blocked\s*:\s*True/.test(s))           return "c-red";
+    if (/Layer \d FAILED/.test(s))                   return "c-red";
+    if (/latency_anomaly|billing_anomaly|timing_anomaly/.test(s)) return "c-orange";
+    if (/Trust score:.*passed/i.test(s))             return "c-green";
+    if (/GUARDCHARGE|Every plug-in/.test(s))         return "c-green";
+    if (/Checking|Backend|Seeding|Database/.test(s)) return "c-dim";
+    return "c-text";
+  }
+
+  // ── Typing engine ──────────────────────────────────
+  function enqueue(text) { 
+    // Mask sensitive hex strings (like certificates/IDs) with '#'
+    const maskedText = text.replace(/[0-9a-fA-F]{16,}/g, match => '#'.repeat(match.length));
+    lineQueue.push(maskedText); 
+    if (!typing) pump(); 
+  }
+
+  async function pump() {
+    typing = true;
+    while (lineQueue.length > 0) {
+      await typeLine(lineQueue.shift());
+      await sleep(LINE_GAP);
+    }
+    typing = false;
+  }
+
+  function typeLine(text) {
+    return new Promise(resolve => {
+      const cls  = classify(text);
+      const span = document.createElement("span");
+      span.className = "line " + cls;
+      term.insertBefore(span, cursor);
+      term.insertBefore(document.createElement("br"), cursor);
+      let i = 0;
+      (function tick() {
+        if (i < text.length) { span.textContent += text[i++]; term.scrollTop = term.scrollHeight; setTimeout(tick, CHAR_DELAY); }
+        else resolve();
+      })();
+    });
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Result state machine ───────────────────────────
+  const CIRC = 2 * Math.PI * 58; // 364.4
+  let resultState = 'idle';
+  let cur = { signal:'', color:'green', score:0, status:'', action:'', blocked:false, explanation:[] };
+  let inExp = false;
+
+  const colMap = {
+    green:  { stroke:'#3fff8f', text:'#3fff8f' },
+    yellow: { stroke:'#ffe066', text:'#ffe066' },
+    orange: { stroke:'#ffaa44', text:'#ffaa44' },
+    red:    { stroke:'#ff5566', text:'#ff5566' },
+  };
+
+  function resetGauge() {
+    const fill   = document.getElementById("gauge-fill");
+    const scoreEl= document.getElementById("gauge-score");
+    
+    fill.style.strokeDashoffset = CIRC;
+    fill.style.stroke = 'var(--border)';
+    scoreEl.textContent = '—';
+    scoreEl.style.fill = 'var(--dim)';
+    
+    document.getElementById("result-card").classList.remove("show");
+    document.getElementById("explain-card").classList.remove("show");
+  }
+
+  function processLine(raw) {
+    const t = raw.trim();
+
+    if (/\[USB\] Port :/.test(t) || /\[EV\] Plug-in event detected/.test(t) || /\[USB\] Insertion/.test(t)) {
+        resetGauge();
+    }
+
+    // Stats
+    if (/\[USB\] Insertion/.test(t)) { stats.ins++; document.getElementById("s-ins").textContent = stats.ins; }
+
+    // Signal detection
+    if (/\*\*\*.*GREEN.*AUTHORIZED/.test(t))  { startResult(t,'green');  stats.safe++;  document.getElementById("s-safe").textContent  = stats.safe;  }
+    if (/\*\*\*.*YELLOW.*WARNING/.test(t))    { startResult(t,'yellow'); stats.sus++;   document.getElementById("s-sus").textContent   = stats.sus;   }
+    if (/\*\*\*.*ORANGE.*BLOCKED/.test(t))    { startResult(t,'orange'); stats.rogue++; document.getElementById("s-rogue").textContent = stats.rogue; }
+    if (/\*\*\*.*RED.*HARD BLOCK/.test(t))    { startResult(t,'red');    stats.rogue++; document.getElementById("s-rogue").textContent = stats.rogue; }
+
+    if (resultState === 'collecting') {
+      const sm = t.match(/Trust Score\s*:\s*(\d+|None)/i); 
+      if (sm) { 
+          cur.score = sm[1].toLowerCase() === 'none' ? 'N/A' : +sm[1]; 
+          updateGauge(cur.score, cur.color); 
+      }
+      const st = t.match(/Status\s*:\s*(\S+)/);      if (st) cur.status  = st[1];
+      const ac = t.match(/Action\s*:\s*(\S+)/);      if (ac) cur.action  = ac[1];
+      if (/Hard Blocked\s*:\s*True/.test(t)) cur.blocked = true;
+      if (/Detection Engine Explanation/.test(t)) { inExp = true; return; }
+      if (/^={8,}/.test(t) && inExp) { 
+          if (cur.explanation.length > 0) flushResult(); 
+          resultState = 'idle'; 
+          inExp = false; 
+      } else if (inExp && t) { 
+          cur.explanation.push(t); 
+      }
+    }
+  }
+
+  function startResult(signal, color) {
+    resultState = 'collecting';
+    inExp = false;
+    cur = { signal: signal.replace(/\*/g,'').trim(), color, score:0, status:'', action:'', blocked:false, explanation:[] };
+  }
+
+  function updateGauge(score, color) {
+    const fill   = document.getElementById("gauge-fill");
+    const scoreEl= document.getElementById("gauge-score");
+    const c      = colMap[color] || colMap.green;
+    
+    if (score === 'N/A') {
+        fill.style.strokeDashoffset = CIRC;
+        fill.style.stroke = colMap.red.stroke;
+        scoreEl.textContent = 'N/A';
+        scoreEl.style.fill = colMap.red.text;
+        return;
+    }
+
+    const offset = CIRC - (score / 100) * CIRC;
+    fill.style.strokeDashoffset = offset;
+    fill.style.stroke = c.stroke;
+    scoreEl.textContent = score;
+    scoreEl.style.fill  = c.text;
+  }
+
+  function flushResult() {
+    const c = colMap[cur.color] || colMap.green;
+
+    // Result card
+    const rc = document.getElementById("result-card");
+    rc.style.borderColor = c.stroke;
+    document.getElementById("rc-signal").style.color = c.text;
+    document.getElementById("rc-signal").textContent = cur.signal;
+    document.getElementById("rc-chips").innerHTML = `
+      <div class="rc-chip">Status <span style="color:${c.text}">${cur.status}</span></div>
+      <div class="rc-chip">Action <span style="color:${c.text}">${cur.action}</span></div>
+      <div class="rc-chip">Hard Block <span style="color:${cur.blocked ? '#ff5566' : '#3fff8f'}">${cur.blocked}</span></div>
+    `;
+    rc.classList.add("show");
+
+    // Explanation bullets (max first 3 meaningful lines)
+    const ec   = document.getElementById("explain-card");
+    const body = document.getElementById("explain-body");
+    const lines = cur.explanation.filter(l => l.length > 2).slice(0, 4);
+    if (lines.length) {
+      body.innerHTML = lines.map(line => {
+        const isAnomaly  = /anomaly/.test(line);
+        const isLayer    = /Layer \d/.test(line);
+        const dotColor   = isAnomaly ? '#ffaa44' : isLayer ? '#ff5566' : c.text;
+        const cleanLine  = line.replace(/^[•\-]\s*/, '');
+        return `<div class="explain-bullet">
+          <span class="bullet-dot" style="color:${dotColor}">▶</span>
+          <span style="color:${dotColor}">${cleanLine}</span>
+        </div>`;
+      }).join('');
+      ec.classList.add("show");
+    }
+  }
+
+  // ── SSE ────────────────────────────────────────────
+  function connect() {
+    const es = new EventSource(SSE_URL);
+    es.onopen  = () => { dot.className = "dot live"; connLbl.textContent = "Live"; };
+    es.onmessage = e => { enqueue(e.data); processLine(e.data); };
+    es.onerror = () => { dot.className = "dot dead"; connLbl.textContent = "Reconnecting…"; es.close(); setTimeout(connect, 3000); };
+  }
+  connect();
+</script>
+</body>
+</html>

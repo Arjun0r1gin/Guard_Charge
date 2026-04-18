@@ -4,17 +4,44 @@ import time
 import requests
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+BACKEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'backend')
+sys.path.insert(0, BACKEND_DIR)
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{os.path.join(BACKEND_DIR, 'guardcharge.db')}")
 
 from attack_modes import get_safe_profile, get_partial_profile, get_rogue_profile
 from session_manager import SessionManager
+from seed_chargers import seed as _seed_db
 
-import win32api
+import win32api 
 import win32con
 import win32gui
 
 BACKEND_URL = "http://localhost:8000"
 DETECTION_ENDPOINT = f"{BACKEND_URL}/detection/run"
+STREAM_LOG_ENDPOINT = f"{BACKEND_URL}/stream/log"
+
+# ── Mirror every print() to the dashboard via /stream/log ────────────
+import builtins as _builtins
+_real_print = _builtins.print
+
+def _stream_print(*args, sep=" ", end="\n", **kwargs):
+    """Wrapper: prints to console AND forwards the line to the SSE stream."""
+    text = sep.join(str(a) for a in args)
+    # Safe console output — replace unencodable chars (cp1252 terminals)
+    safe = text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
+    _real_print(safe, end=end, **kwargs)
+    # Send original Unicode text to dashboard
+    def _post():
+        try:
+            requests.post(STREAM_LOG_ENDPOINT, json={"text": text}, timeout=2)
+        except Exception:
+            pass
+    threading.Thread(target=_post, daemon=True).start()
+
+# Patch builtins so attack_modes.py and every other module uses this wrapper
+_builtins.print = _stream_print
+print = _stream_print
+
 
 PORTS = {
     1: {
@@ -24,13 +51,13 @@ PORTS = {
         "profile_fn": get_safe_profile,
     },
     2: {
-        "label": "Port 2 — Ather Grid HSR Layout",
+        "label": "Port 2 — Tata Power Indiranagar",
         "scenario": "PARTIAL",
         "charger_id": 2,
         "profile_fn": get_partial_profile,
     },
     3: {
-        "label": "Port 3 — ChargeZone MG Road (ROGUE)",
+        "label": "Port 3 — Ather Grid - HSR Layout",
         "scenario": "ROGUE",
         "charger_id": 3,
         "profile_fn": get_rogue_profile,
@@ -47,10 +74,10 @@ def print_banner():
     print("   GUARDCHARGE — EV Charging Security Simulator")
     print("   Every plug-in, verified.")
     print("=" * 60)
-    print("\n  Waiting for USB insertion...")
-    print("  Insert 1  →  Safe charger      (VERIFIED)")
-    print("  Insert 2  →  Partial anomaly   (SUSPICIOUS)")
-    print("  Insert 3  →  Rogue charger     (CONFIRMED ROGUE)")
+    print("\n  Waiting for EV charger plug-in...")
+    #print("  Insert 1  →  Safe charger      (VERIFIED)")
+    #print("  Insert 2  →  Partial anomaly   (SUSPICIOUS)")
+    #print("  Insert 3  →  Rogue charger     (CONFIRMED ROGUE)")
     print("\n  Press Ctrl+C to exit.\n")
 
 
@@ -81,13 +108,13 @@ def print_result(result: dict):
     for line in explanation.split("\n"):
         print(f"    {line}")
     print("\n" + "=" * 60)
-    print("\n  Waiting for next USB insertion...\n")
+    print("\n  Waiting for next EV charger plug-in...\n")
 
 
 def simulate_plug_in(port_label: str):
     print(f"\n  {'=' * 58}")
-    print(f"  [USB] Plug-in event detected")
-    print(f"  [USB] Port : {port_label}")
+    print(f"  [EV] Plug-in event detected")
+    print(f"  [EV] Port : {port_label}")
     print(f"  {'=' * 58}")
     time.sleep(0.5)
     print("\n  [STEP 1] Establishing connection with charging station...")
@@ -159,7 +186,7 @@ def on_usb_inserted():
                 insertion_count = 1
                 count = 1
 
-    print(f"\n  [USB] Insertion #{count} detected.")
+    print(f"\n  [EV] Insertion #{count} detected.")
     threading.Thread(target=run_scenario, args=(count,), daemon=True).start()
 
 
@@ -193,6 +220,13 @@ def create_listener_window():
 
 def main():
     print_banner()
+
+    # Auto-seed the database if it has no chargers (safe to run every time).
+    print("  Checking database...")
+    try:
+        _seed_db()
+    except Exception as e:
+        print(f"  [WARN] Could not auto-seed database: {e}")
 
     try:
         requests.get(f"{BACKEND_URL}/chargers/", timeout=5)

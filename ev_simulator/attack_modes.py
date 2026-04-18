@@ -20,6 +20,11 @@ def fetch_charger(charger_id: int) -> Charger:
     db = SessionLocal()
     charger = db.query(Charger).filter(Charger.id == charger_id).first()
     db.close()
+    if charger is None:
+        raise RuntimeError(
+            f"Charger ID {charger_id} not found in database. "
+            "Run 'python backend/seed_chargers.py' to populate the database."
+        )
     return charger
 
 

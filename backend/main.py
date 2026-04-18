@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import chargers, alerts, detection
+from routers import chargers, alerts, detection, stream
 
 Base.metadata.create_all(bind=engine)
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(chargers.router)
 app.include_router(alerts.router)
 app.include_router(detection.router)
+app.include_router(stream.router)
 
 
 @app.get("/")
