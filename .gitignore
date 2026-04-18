@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Database
+*.db
+*.sqlite3
+
+# Certs & Keys
+backend/certs/*.key
+backend/certs/*.pem
+backend/certs/*.crt
+
+# Env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
