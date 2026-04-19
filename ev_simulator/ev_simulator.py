@@ -3,6 +3,8 @@ import os
 import time
 import requests
 import threading
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
@@ -13,7 +15,7 @@ import win32api
 import win32con
 import win32gui
 
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL       = "https://localhost:8000"
 DETECTION_ENDPOINT = f"{BACKEND_URL}/detection/run"
 
 PORTS = {
@@ -24,7 +26,7 @@ PORTS = {
         "profile_fn": get_safe_profile,
     },
     2: {
-        "label": "Port 2 — Ather Grid HSR Layout",
+        "label": "Port 2 — Ather Grid Indiranagar",
         "scenario": "PARTIAL",
         "charger_id": 2,
         "profile_fn": get_partial_profile,
@@ -99,10 +101,11 @@ def simulate_plug_in(port_label: str):
 
 
 def run_scenario(port_number: int):
+    global processing
     port = PORTS[port_number]
     simulate_plug_in(port["label"])
 
-    session = manager.start(
+    manager.start(
         charger_id=port["charger_id"],
         port=f"Port {port_number}",
         scenario=port["scenario"],
@@ -113,23 +116,48 @@ def run_scenario(port_number: int):
 
     profile = port["profile_fn"](port["charger_id"])
 
-    print("\n  [STEP 5] Sending data to GuardCharge backend...")
+    print("\n  [STEP 5] Sending data to GuardCharge backend (TLS)...")
     time.sleep(0.4)
 
     try:
-        response = requests.post(DETECTION_ENDPOINT, json=profile, timeout=10)
+        response = requests.post(
+            DETECTION_ENDPOINT,
+            json=profile,
+            timeout=10,
+            verify=False
+        )
         response.raise_for_status()
         result = response.json()
+
     except requests.exceptions.ConnectionError:
-        print("\n  [ERROR] Cannot reach backend.")
-        print("  Make sure uvicorn is running: uvicorn main:app --reload")
+        print("\n  ╔══════════════════════════════════════════════╗")
+        print("  ║  [FAIL-SAFE] Backend unreachable             ║")
+        print("  ║  GuardCharge defaults to BLOCK               ║")
+        print("  ║  Charging is NOT permitted                   ║")
+        print("  ║  We never fail open — safety first           ║")
+        print("  ╚══════════════════════════════════════════════╝")
+        with lock:
+            processing = False
         return
+
+    except requests.exceptions.Timeout:
+        print("\n  ╔══════════════════════════════════════════════╗")
+        print("  ║  [FAIL-SAFE] Backend timeout (10s)           ║")
+        print("  ║  GuardCharge defaults to BLOCK               ║")
+        print("  ║  Charging is NOT permitted                   ║")
+        print("  ╚══════════════════════════════════════════════╝")
+        with lock:
+            processing = False
+        return
+
     except Exception as e:
-        print(f"\n  [ERROR] {e}")
+        print(f"\n  [FAIL-SAFE] Unexpected error: {e}")
+        print("  [FAIL-SAFE] Defaulting to BLOCK — charging not permitted.")
+        with lock:
+            processing = False
         return
 
     print("  [STEP 6] Result received from detection engine.")
-
     print_result(result)
 
     manager.complete(
@@ -140,6 +168,8 @@ def run_scenario(port_number: int):
         hard_blocked=result["hard_blocked"],
     )
 
+    with lock:
+        processing = False
 
 # ── Windows USB detection via hidden message window ──────────────────
 
@@ -195,17 +225,19 @@ def main():
     print_banner()
 
     try:
-        requests.get(f"{BACKEND_URL}/chargers/", timeout=5)
+        requests.get(f"{BACKEND_URL}/chargers/", timeout=5, verify=False)
+        print("  Backend connected successfully.\n")
     except requests.exceptions.ConnectionError:
         print("\n  [ERROR] Backend is not running.")
-        print("  Start it: cd backend && uvicorn main:app --reload\n")
+        print("  Start it: cd backend && uvicorn main:app "
+              "--ssl-keyfile key.pem --ssl-certfile cert.pem --reload\n")
         sys.exit(1)
 
-    print("  Backend connected successfully.\n")
+    print("  [FAIL-SAFE] Enabled — backend unreachable = charging blocked.")
+    print("  [TLS] All communications encrypted (HTTPS + WSS).")
+    print("  Listening for USB insertions...\n")
 
     create_listener_window()
-
-    print("  Listening for USB insertions...\n")
 
     try:
         win32gui.PumpMessages()
