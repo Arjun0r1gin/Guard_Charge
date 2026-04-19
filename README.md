@@ -131,6 +131,12 @@ The dashboard streams events from the backend in real time and displays the trus
 
 ---
 
+##Future and Scalability
+
+- Check out our 2nd branch on this REPO to see the future scope and More developed security features.
+
+---
+
 ## Notes
 
 - The simulator only runs on Windows because USB device change events use the Win32 API (`WM_DEVICECHANGE`).
