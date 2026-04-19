@@ -131,11 +131,15 @@ The dashboard streams events from the backend in real time and displays the trus
 
 ---
 
-##Future and Scalability
+## Future and Scalability
 
-- Check out our 2nd branch on this REPO to see the future scope and More developed security features.
-
----
+- Explore the `future-features` branch in this repository for ongoing development, upcoming security enhancements, and new detection techniques.
+- Planned enhancements include:
+  - Integration with cloud-managed fleet operations.
+  - Support for additional charger hardware protocols.
+  - Historical anomaly analysis and long-term monitoring dashboards.
+  - Automated responses to emerging attack patterns.
+- Community feedback and contributions are welcome!
 
 ## Notes
 
